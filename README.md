@@ -56,7 +56,7 @@ DEBUG=1 price_history_server.py 6666
 START_AT=1632632400 price_history_server.py 6666
 ```
 
-Mix n Match
+  - Mix n Match
 
 ```
 START_AT=1632632400 DEBUG=1 PORT=6666 price_history_server.py
