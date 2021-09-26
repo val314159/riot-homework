@@ -60,7 +60,3 @@ Mix n Match
 START_AT=1632632400 DEBUG=1 PORT=6666 price_history_server.py
 ```
 
-```
-price_history_server.py 6666
-```
-
