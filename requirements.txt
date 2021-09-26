@@ -1,0 +1,6 @@
+bottle
+gevent
+
+# this one is really optional
+# but we use it to speed up bottle's JSON
+orjson
