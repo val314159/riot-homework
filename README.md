@@ -13,6 +13,8 @@ pricing feed + api call
 sudo make install
 ```
 
+  - *Optional:* Use nginx.conf as a guide for a front end proxy server
+
 ### Run
 
 #### To run on port 6666
