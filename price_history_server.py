@@ -5,14 +5,17 @@ history server for BTC/ETH price.
 samples prices every 5 minutes.
 
 keeps track of the last hour.
+
+This doesn't do anythign with timezones, so it's all localtime.
+If your server is set to UTC (recommended) this won't matter.
 """
 from gevent import spawn, spawn_later, joinall, monkey as _;_.patch_all()
 import os, sys, time, requests, bottle
 from datetime import datetime as dt
 
-# optimize 
-from orjson import dumps
-bottle.app().install(bottle.JSONPlugin(dumps))
+# optimize , this makes bottle process JSON faster.
+import orjson
+bottle.app().install(bottle.JSONPlugin(orjson.dumps))
 
 
 # delay between sampling loops
@@ -20,7 +23,13 @@ SAMPLING_DELAY = 300 # seconds
 
 # the sliding window of time for the history
 SLIDING_WINDOW = 3600 # seconds
+#SAMPLING_DELAY, SLIDING_WINDOW = 6, 30
 
+# Making the grand assumption that the window must be a multiple of the sampling delay
+assert((SLIDING_WINDOW % SAMPLING_DELAY) == 0)
+
+# Making the grand assumption that the window is a multiple of the sampling delay
+MAX_TICKS = int(SLIDING_WINDOW / SAMPLING_DELAY)
 
 # get BTC price
 BTC_URL = 'https://api.blockchain.com/v3/exchange/tickers/BTC-USD'
@@ -33,30 +42,14 @@ ETH_URL = 'https://min-api.cryptocompare.com/data/price?fsym=ETH&tsyms=USD'
 History = []
 
 
-# How far off of UTC are we?
-# (there are surely better ways to do this, but this a quick n dirty hack
-TimeZoneAdjust = int(time.time() - dt.utcnow().timestamp())
-
-
-def adjust_time_to_utc(local_epoch):
-    """
-    convert local unix time to UTC unix time
-    """
-    return local_epoch + TimeZoneAdjust
-
-'''
-def utc_epoch_time():
-    """
-    utility function to get current epoch in UTC
-    """
-    return dt.utcnow().timestamp()
-'''
-
 def query_price_looper(start_time):
     """
     loops forever every SAMPLING_DELAY seconds
     samples prices from URLs
     computes and saves the result in global History
+
+    Params:
+    start_time: the exact time we were scheduled to start
     """
     global History
 
@@ -74,8 +67,7 @@ def query_price_looper(start_time):
     after_time = time.time()   ## when the network calls finish
 
     # estimated time, average round trip
-    local_timestamp = int( (before_time + after_time) / 2) 
-    utc_timestamp = adjust_time_to_utc(local_timestamp)
+    timestamp = int( (before_time + after_time) / 2) 
 
     # do the data extraction
     btc_usd = btc_req[0].json()['last_trade_price']
@@ -84,18 +76,20 @@ def query_price_looper(start_time):
     # data computation
     btc_eth = btc_usd / eth_usd
 
-    # delete all history records stamped outside the time ewindow
-    window_start = time.time() - SLIDING_WINDOW
-    
-    # strip out old timestamps and append new record
-   
-    new_record = [utc_timestamp, btc_eth]
+    # take the last MAX_TICKS (minus one) out of the History
+    trimmed_history = History[-(MAX_TICKS-1):]
 
+    # create new record
+    new_record = [timestamp, btc_eth]
+
+    # swap out old History list for new one
+   
     # # assignment is atomic in Python so
     # # this is safe for threaded code
-    History = [x for x in History if x[0] > window_start] + [new_record]
-    
-    print("history:", History)
+    History = trimmed_history + [new_record]
+
+    iso = dt.fromtimestamp(timestamp).isoformat()
+    print(f"history @ {iso}: {History}")
 
     # take into account processing time
     delay = SAMPLING_DELAY - (time.time() - start_time)
@@ -135,35 +129,33 @@ if __name__=='__main__':
         start_time = 0
         pass
 
-    now = utc_epoch_time()
-
     if start_time == 0:
 
         # 0 means start right now
         
-        start_time = now
+        start_time = time.time()
 
         delay = 0
         
     else:
 
         # means start_time is set to a local epoch time
-        
-        if start_time < now:
-        
+
+        if start_time < time.time():
+
             # start_time's in the past...  we need to
             # time-shift start_time into the future
         
-            time_diff = now - start_time
+            time_diff = time.time() - start_time
 
             intervals = (time_diff // SAMPLING_DELAY) + 1
-        
+
             start_time += intervals * SAMPLING_DELAY
 
             pass
-        
+
         # compute how long to wait initially
-        delay = start_time - now
+        delay = start_time - time.time()
 
         pass
 
