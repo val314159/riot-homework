@@ -33,12 +33,24 @@ ETH_URL = 'https://min-api.cryptocompare.com/data/price?fsym=ETH&tsyms=USD'
 History = []
 
 
+# How far off of UTC are we?
+# (there are surely better ways to do this, but this a quick n dirty hack
+TimeZoneAdjust = int(time.time() - dt.utcnow().timestamp())
+
+
+def adjust_time_to_utc(local_epoch):
+    """
+    convert local unix time to UTC unix time
+    """
+    return local_epoch + TimeZoneAdjust
+
+'''
 def utc_epoch_time():
     """
     utility function to get current epoch in UTC
     """
     return dt.utcnow().timestamp()
-
+'''
 
 def query_price_looper(start_time):
     """
@@ -62,7 +74,8 @@ def query_price_looper(start_time):
     after_time = time.time()   ## when the network calls finish
 
     # estimated time, average round trip
-    timestamp = int( (before_time + after_time) / 2)
+    local_timestamp = int( (before_time + after_time) / 2) 
+    utc_timestamp = adjust_time_to_utc(local_timestamp)
 
     # do the data extraction
     btc_usd = btc_req[0].json()['last_trade_price']
@@ -72,17 +85,20 @@ def query_price_looper(start_time):
     btc_eth = btc_usd / eth_usd
 
     # delete all history records stamped outside the time ewindow
-    window_start = start_time - SLIDING_WINDOW
-
+    window_start = time.time() - SLIDING_WINDOW
+    
     # strip out old timestamps and append new record
+   
+    new_record = [utc_timestamp, btc_eth]
+
     # # assignment is atomic in Python so
     # # this is safe for threaded code
-    History = [x for x in History if x[0] > window_start] + [[timestamp, btc_eth]]
+    History = [x for x in History if x[0] > window_start] + [new_record]
     
     print("history:", History)
 
     # take into account processing time
-    delay = SAMPLING_DELAY - (utc_epoch_time() - start_time)
+    delay = SAMPLING_DELAY - (time.time() - start_time)
     
     # see ya next time
     spawn_later(delay, query_price_looper, start_time + SAMPLING_DELAY)
@@ -130,6 +146,8 @@ if __name__=='__main__':
         delay = 0
         
     else:
+
+        # means start_time is set to a local epoch time
         
         if start_time < now:
         
